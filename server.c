@@ -102,16 +102,17 @@ char* getclientinput(int new_fd) {
 	char buffer[max_input_size];
 	int data_size = recv(new_fd, buffer, max_input_size, 0);
 
-	printf("Size: %ld | Initial buffer: %s\n", sizeof(buffer), buffer);
-	char *input = (char *)malloc(data_size);
-	
-	strncpy(input, buffer, data_size);
-	// strcat(input, "\n");
+	if (data_size <= 2) {
+		return "";
+	}
 
 	printf("Received %d bytes of data\n", data_size);
-	printf("Input: %s\n", input);
-	printf("Size of input: %ld\n", strlen(input));
-	// printf("Size of input: %ld\n", sizeof(input));
+	printf("Message: %s\n", buffer);
+
+	char *input = (char *)calloc(30, sizeof(char));
+	
+	strncpy(input, buffer, data_size - 2);
+	strcat(input, "\n");
 
 	return input;
 }
@@ -132,7 +133,7 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 	inet_ntop(client_addr.ss_family,
 		get_in_addr((struct sockaddr *)&client_addr),
 		client_ip, sizeof client_ip);
-	printf("server: got connection from %s\n", client_ip);
+	printf("Server: got connection from %s\n", client_ip);
 	
 	char *buffer = getclientinput(new_fd);
 	int data_size = strlen(buffer);
@@ -146,12 +147,15 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 			perror("send");
 		}
 
+		if (data_size > 2) {
+			free(buffer);
+		}
+
 		close(new_fd);
 		exit(0);
 	}
+
 	close(new_fd);  // parent doesn't need this
-	
-	free(buffer);
 }
 
 int main(void) {
