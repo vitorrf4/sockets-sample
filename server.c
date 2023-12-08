@@ -12,7 +12,7 @@
 #include <signal.h>
 
 #define LOCATION "localhost"
-#define PORT "3002"  // the port users will be connecting to
+#define PORT "3003"  // the port users will be connecting to
 #define BACKLOG 10	 // how many pending connections queue will hold
 
 void sigchld_handler(int s)
@@ -96,25 +96,26 @@ int bindsocket(struct addrinfo *servinfo) {
 }
 
 char* getclientinput(int new_fd) {
-	send(new_fd, "Input your name: ", 18, 0);
-	int max_input_size = 30 * sizeof(char);
+    int max_input_size = 30 * sizeof(char);
+    char buffer[max_input_size];
+    int data_size;
 
-	char buffer[max_input_size];
-	int data_size = recv(new_fd, buffer, max_input_size, 0);
+    send(new_fd, "Input your name: ", 17, 0);
+    data_size = recv(new_fd, buffer, max_input_size, 0);
 
-	if (data_size <= 2) {
-		return "";
-	}
+    // data_size will have a minimum of two bytes from recv()
+    if (data_size <= 2) {
+        return NULL;
+    }
 
-	printf("Received %d bytes of data\n", data_size);
-	printf("Message: %s\n", buffer);
+    printf("Received %d bytes of data\n", data_size);
+    printf("Message: %.*s\n", data_size, buffer);
 
-	char *input = (char *)calloc(30, sizeof(char));
-	
-	strncpy(input, buffer, data_size - 2);
-	strcat(input, "\n");
+    char *input = (char *)calloc(data_size + 1, sizeof(char));
+    strncpy(input, buffer, data_size - 2);
+    input[data_size - 2] = '\n'; 
 
-	return input;
+    return input;
 }
 
 void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
@@ -136,10 +137,11 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 	printf("Server: got connection from %s\n", client_ip);
 	
 	char *buffer = getclientinput(new_fd);
-	int data_size = strlen(buffer);
 
-	if (!fork()) { // this is the child process
+	if (!fork() && buffer != NULL) { // this is the child process
 		close(sockfd); // child doesn't need the listener
+
+		int data_size = strlen(buffer);
 		char msg[7 + data_size]; 
 		snprintf(msg, sizeof msg, "Hello %s\n", buffer);
 
@@ -159,10 +161,9 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 }
 
 int main(void) {
-	int sockfd, new_fd;  // listen on sock_fd, new connection on new_fd
+	int sockfd;  // listen on sock_fd, new connection on new_fd
 	struct addrinfo *servinfo;
 	struct sockaddr_storage client_addr; // connector's address information
-	socklen_t sin_size;
 	struct sigaction sa;
 
 	servinfo = checkserver(LOCATION, PORT);
