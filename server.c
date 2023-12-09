@@ -10,9 +10,11 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <unistd.h>
+#include <syslog.h>
 
 #define LOCATION "localhost"
-#define PORT "3003"  // the port users will be connecting to
+#define PORT "3000"  // the port users will be connecting to
 #define BACKLOG 10	 // how many pending connections queue will hold
 
 void sigchld_handler(int s)
@@ -134,7 +136,7 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 	inet_ntop(client_addr.ss_family,
 		get_in_addr((struct sockaddr *)&client_addr),
 		client_ip, sizeof client_ip);
-	printf("Server: got connection from %s\n", client_ip);
+	syslog(LOG_USER | LOG_INFO, "got connection from %s", client_ip);
 	
 	char *buffer = getclientinput(new_fd);
 
@@ -158,6 +160,18 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 	}
 
 	close(new_fd);  // parent doesn't need this
+}
+
+void createdaemon() {
+	// change to the "/" directory
+	int nochdir = 0;
+
+	// redirect standard input, output and error to /dev/null
+	// this is equivalent to "closing the file descriptors"
+	int noclose = 0;
+	
+	if (daemon(nochdir, noclose))
+		perror("daemon");
 }
 
 int main(void) {
@@ -184,6 +198,11 @@ int main(void) {
 	}
 
 	printf("server: waiting for connections on %s:%s...\n", LOCATION, PORT);
+
+	createdaemon();
+
+	openlog("SERVER_DAEMON", LOG_PID, LOG_USER);
+	syslog(LOG_USER | LOG_INFO, "starting");
 
 	while(1) {  // main accept() loop
 		requesthandler(sockfd, client_addr);
