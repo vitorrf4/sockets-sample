@@ -29,7 +29,6 @@ void sigchld_handler(int s)
 	errno = saved_errno;
 }
 
-
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
