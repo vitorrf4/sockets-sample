@@ -1,5 +1,5 @@
 # C Socket Server
-Sample C server made to studies sockets and low-level networking.
+Sample C server made to practice sockets and low-level networking.
 
 This server:
 - Queries the information of an adress and/or a port with getaddrinfo()
