@@ -14,7 +14,7 @@
 #include <syslog.h>
 
 #define LOCATION "localhost"
-#define PORT "3000"  // the port users will be connecting to
+#define PORT "3000"
 #define BACKLOG 10	 // how many pending connections queue will hold
 
 void sigchld_handler(int s)
@@ -40,7 +40,7 @@ void *get_in_addr(struct sockaddr *sa)
 }
 
 // verify endpoint connection and set address info
-struct addrinfo* checkserver(char* server, char* port) {
+struct addrinfo* check_server(char* server, char* port) {
 	struct addrinfo *servinfo, hints;
 	int rv;
 
@@ -57,7 +57,7 @@ struct addrinfo* checkserver(char* server, char* port) {
 }
 
 // create socket and bind it to a particular service 
-int bindsocket(struct addrinfo *servinfo) {
+int bind_socket(struct addrinfo *servinfo) {
 	struct addrinfo *p;
 	int sockfd;
 	int yes = 1;
@@ -96,7 +96,7 @@ int bindsocket(struct addrinfo *servinfo) {
 	return sockfd;
 }
 
-char* getclientinput(int new_fd) {
+char* get_client_input(int new_fd) {
     int max_input_size = 30 * sizeof(char);
     char buffer[max_input_size];
     int data_size;
@@ -119,7 +119,7 @@ char* getclientinput(int new_fd) {
     return input;
 }
 
-void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
+void request_handler(int sockfd, struct sockaddr_storage client_addr) {
 	int sin_size, new_fd;
 	char client_ip[INET6_ADDRSTRLEN];
 
@@ -137,7 +137,7 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 		client_ip, sizeof client_ip);
 	syslog(LOG_USER | LOG_INFO, "got connection from %s", client_ip);
 	
-	char *buffer = getclientinput(new_fd);
+	char *buffer = get_client_input(new_fd);
 
 	if (!fork() && buffer != NULL) { // this is the child process
 		close(sockfd); // child doesn't need the listener
@@ -161,7 +161,7 @@ void requesthandler(int sockfd, struct sockaddr_storage client_addr) {
 	close(new_fd);  // parent doesn't need this
 }
 
-void createdaemon() {
+void create_daemon() {
 	// change to the "/" directory
 	int nochdir = 0;
 
@@ -179,8 +179,8 @@ int main(void) {
 	struct sockaddr_storage client_addr; // connector's address information
 	struct sigaction sa;
 
-	servinfo = checkserver(LOCATION, PORT);
-	sockfd = bindsocket(servinfo);
+	servinfo = check_server(LOCATION, PORT);
+	sockfd = bind_socket(servinfo);
 
 	// listen to incoming requests on the socket
 	if (listen(sockfd, BACKLOG) == -1) {
@@ -198,13 +198,13 @@ int main(void) {
 
 	printf("server: waiting for connections on %s:%s...\n", LOCATION, PORT);
 
-	// createdaemon();
+	//create_daemon();
 
-	openlog("SERVER_DAEMON", LOG_PID, LOG_USER);
-	syslog(LOG_USER | LOG_INFO, "starting");
+	// openlog("SERVER_DAEMON", LOG_PID, LOG_USER);
+	// syslog(LOG_USER | LOG_INFO, "starting");
 
 	while(1) {  // main accept() loop
-		requesthandler(sockfd, client_addr);
+		request_handler(sockfd, client_addr);
 	}
 
 	return 0;
