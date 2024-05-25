@@ -14,7 +14,7 @@
 #include <syslog.h>
 #include "start_server.h"
 
-#define BACKLOG 10	 // how many pending connections queue will hold
+#define BACKLOG 10	 // How many pending connections queue will hold
 
 // FUNCTIONS DECLARATIONS
 void *get_in_addr(struct sockaddr *sa);
@@ -29,21 +29,21 @@ int start_server(char* address, char* port, int daemonize);
 // FUNCTION IMPLEMENTATIONS
 
 int start_server(char* address, char* port, int daemonize) {
-	int sockfd;  // listen on sock_fd, new connection on new_fd
+	int sockfd;  // Listen on sock_fd, new connection on new_fd
 	struct addrinfo *servinfo;
-	struct sockaddr_storage client_addr; // connector's address information
+	struct sockaddr_storage client_addr; // Connector's address information
 	struct sigaction sa;
 
 	servinfo = check_server(address, port);
 	sockfd = bind_socket(servinfo);
 
-	// listen to incoming requests on the socket
+	// Listen to incoming requests on the socket
 	if (listen(sockfd, BACKLOG) == -1) {
 		perror("listen");
 		exit(1);
 	}
 
-	sa.sa_handler = sigchld_handler; // reap all dead processes
+	sa.sa_handler = sigchld_handler; // Reap all dead processes
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = SA_RESTART;
 	if (sigaction(SIGCHLD, &sa, NULL) == -1) {
@@ -58,14 +58,14 @@ int start_server(char* address, char* port, int daemonize) {
 		create_daemon();
 	}
 
-	while(1) {  // main accept() loop
+	while(1) {  // Main accept() loop
 		request_handler(sockfd, client_addr);
 	}
 
 	return 0;
 }
 
-// verify endpoint connection and set address info
+// Verify endpoint connection and set address info
 struct addrinfo* check_server(char* server, char* port) {
 	struct addrinfo *servinfo, hints;
 	int addrinfo_res;
@@ -84,7 +84,7 @@ struct addrinfo* check_server(char* server, char* port) {
 	return servinfo;
 }
 
-// create socket and bind it to a particular service 
+// Create socket and bind it to a particular service 
 int bind_socket(struct addrinfo *servinfo) {
 	struct addrinfo *p;
 	int sockfd;
@@ -98,10 +98,7 @@ int bind_socket(struct addrinfo *servinfo) {
 			continue;
 		}
 
-		// set options for the socket
-		// this allows the socket to be reused immediately after the server exits
-		// SOL_SOCKET means the option is at the socket level
-		// SO_REUSEADDR is the option to set, the server will be able to bind to the same port
+		// set options for the socket, allowing the socket to be reused immediately after the server exits
 		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
 			perror("setsockopt");
 			exit(1);
@@ -128,9 +125,9 @@ int bind_socket(struct addrinfo *servinfo) {
 }
 
 void sigchld_handler(int s) {
-	(void)s; // quiet unused variable warning
+	(void)s; // Quiet unused variable warning
 
-	// waitpid() might overwrite errno, so we save and restore it:
+	// Waitpid() might overwrite errno, so we save and restore it:
 	int saved_errno = errno;
 
 	while(waitpid(-1, NULL, WNOHANG) > 0);
@@ -140,11 +137,11 @@ void sigchld_handler(int s) {
 
 
 void create_daemon() {
-	// change to the "/" directory
+	// Change to the "/" directory
 	int nochdir = 0;
 
-	// redirect standard input, output and error to /dev/null
-	// this is equivalent to "closing the file descriptors"
+	// Redirect standard input, output and error to /dev/null
+	// This is equivalent to "closing the file descriptors"
 	int noclose = 0;
 	
 	if (daemon(nochdir, noclose))
@@ -160,14 +157,14 @@ void request_handler(int sockfd, struct sockaddr_storage client_addr) {
 	char client_ip[INET6_ADDRSTRLEN];
 
 	sin_size = sizeof client_addr;
-	// deal with the connection request
+	// Deal with the connection request
 	new_fd = accept(sockfd, (struct sockaddr *)&client_addr, &sin_size);
 	if (new_fd == -1) {
 		perror("accept");
 		return;
 	}
 
-	// get ip from incoming connection
+	// Get ip from incoming connection
 	inet_ntop(client_addr.ss_family,
 		get_in_addr((struct sockaddr *)&client_addr),
 		client_ip, sizeof client_ip);
@@ -175,8 +172,8 @@ void request_handler(int sockfd, struct sockaddr_storage client_addr) {
 	
 	char *buffer = get_client_input(new_fd);
 
-	if (!fork() && buffer != NULL) { // this is the child process
-		close(sockfd); // child doesn't need the listener
+	if (!fork() && buffer != NULL) { // This is the child process
+		close(sockfd); // Child doesn't need the listener
 
 		int data_size = strlen(buffer);
 		char msg[7 + data_size]; 
@@ -194,10 +191,10 @@ void request_handler(int sockfd, struct sockaddr_storage client_addr) {
 		exit(0);
 	}
 
-	close(new_fd);  // parent doesn't need this
+	close(new_fd);  // Parent doesn't need this
 }
 
-// get sockaddr, IPv4 or IPv6:
+// Get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa) {
 	switch (sa->sa_family) {
 		case AF_INET: return &(((struct sockaddr_in*)sa)->sin_addr);
@@ -213,7 +210,7 @@ char* get_client_input(int new_fd) {
     send(new_fd, "Input your name: ", 17, 0);
     data_size = recv(new_fd, buffer, max_input_size, 0);
 
-    // data_size will have a minimum of two bytes from recv()
+    // Data_size will have a minimum of two bytes from recv()
     if (data_size <= 2) {
         return NULL;
     }
