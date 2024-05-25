@@ -17,11 +17,11 @@
 #define BACKLOG 10	 // How many pending connections queue will hold
 
 // FUNCTIONS DECLARATIONS
+
 void *get_in_addr(struct sockaddr *sa);
 struct addrinfo* check_server(char* server, char* port);
 int bind_socket(struct addrinfo *servinfo);
 void sigchld_handler(int s);
-char* get_client_input(int new_fd);
 void request_handler(int sockfd, struct sockaddr_storage client_addr);
 void create_daemon();
 int start_server(char* address, char* port, int daemonize);
@@ -90,7 +90,7 @@ int bind_socket(struct addrinfo *servinfo) {
 	int sockfd;
 	int yes = 1;
 
-	// loop through all the results and bind to the first we can
+	// Loop through all the results and bind to the first we can
 	for (p = servinfo; p != NULL; p = p->ai_next) {
 		// create the connection socket
 		if ((sockfd = socket(p->ai_family, p->ai_socktype,p->ai_protocol)) == -1) {
@@ -98,13 +98,13 @@ int bind_socket(struct addrinfo *servinfo) {
 			continue;
 		}
 
-		// set options for the socket, allowing the socket to be reused immediately after the server exits
+		// Set options for the socket, allowing the socket to be reused immediately after the server exits
 		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
 			perror("setsockopt");
 			exit(1);
 		}
 
-		// bind endpoint to newly created socket
+		// Bind endpoint to newly created socket
 		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
 			close(sockfd);
 			perror("server: bind");
@@ -114,8 +114,7 @@ int bind_socket(struct addrinfo *servinfo) {
 		break;
 	}
  
-	freeaddrinfo(servinfo); // all done with this structure
-
+	freeaddrinfo(servinfo);
 	if (p == NULL)  {
 		fprintf(stderr, "server: failed to bind\n");
 		exit(1);
@@ -153,12 +152,13 @@ void create_daemon() {
 }
 
 void request_handler(int sockfd, struct sockaddr_storage client_addr) {
-	int sin_size, new_fd;
+	int new_fd;
+	socklen_t addr_len;
 	char client_ip[INET6_ADDRSTRLEN];
 
-	sin_size = sizeof client_addr;
+	addr_len = sizeof client_addr;
 	// Deal with the connection request
-	new_fd = accept(sockfd, (struct sockaddr *)&client_addr, &sin_size);
+	new_fd = accept(sockfd, (struct sockaddr *)&client_addr, &addr_len);
 	if (new_fd == -1) {
 		perror("accept");
 		return;
@@ -168,23 +168,18 @@ void request_handler(int sockfd, struct sockaddr_storage client_addr) {
 	inet_ntop(client_addr.ss_family,
 		get_in_addr((struct sockaddr *)&client_addr),
 		client_ip, sizeof client_ip);
-	syslog(LOG_USER | LOG_INFO, "got connection from %s", client_ip);
+	syslog(LOG_USER | LOG_INFO, "Got connection from %s", client_ip);
 	
-	char *buffer = get_client_input(new_fd);
 
-	if (!fork() && buffer != NULL) { // This is the child process
+	if (!fork()) { // This is the child process
 		close(sockfd); // Child doesn't need the listener
 
-		int data_size = strlen(buffer);
-		char msg[7 + data_size]; 
-		snprintf(msg, sizeof msg, "Hello %s\n", buffer);
+		// char msg; 
+		// snprintf(msg, sizeof msg, "Hello %s\n", buffer);
+		char *msg = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 12\n\nHello world!";
 
-		if (send(new_fd, msg, sizeof(msg), 0) == -1) {
+		if (send(new_fd, msg, strlen(msg), 0) == -1) {
 			perror("send");
-		}
-
-		if (data_size > 2) {
-			free(buffer);
 		}
 
 		close(new_fd);
@@ -200,27 +195,4 @@ void *get_in_addr(struct sockaddr *sa) {
 		case AF_INET: return &(((struct sockaddr_in*)sa)->sin_addr);
 		case AF_INET6: return &(((struct sockaddr_in6*)sa)->sin6_addr);
 	}
-}
-
-char* get_client_input(int new_fd) {
-    int max_input_size = 30 * sizeof(char);
-    char buffer[max_input_size];
-    int data_size;
-
-    send(new_fd, "Input your name: ", 17, 0);
-    data_size = recv(new_fd, buffer, max_input_size, 0);
-
-    // Data_size will have a minimum of two bytes from recv()
-    if (data_size <= 2) {
-        return NULL;
-    }
-
-    printf("Received %d bytes of data\n", data_size);
-    printf("Message: %.*s\n", data_size, buffer);
-
-    char *input = (char *)calloc(data_size + 1, sizeof(char));
-    strncpy(input, buffer, data_size - 2);
-    input[data_size - 2] = '\n'; 
-
-    return input;
 }
