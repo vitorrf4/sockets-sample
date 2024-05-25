@@ -198,7 +198,7 @@ int main(void) {
 
 	printf("server: waiting for connections on %s:%s...\n", LOCATION, PORT);
 
-	createdaemon();
+	// createdaemon();
 
 	openlog("SERVER_DAEMON", LOG_PID, LOG_USER);
 	syslog(LOG_USER | LOG_INFO, "starting");
