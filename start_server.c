@@ -14,27 +14,55 @@
 #include <syslog.h>
 #include "start_server.h"
 
-#define LOCATION "localhost"
-#define PORT "3000"
 #define BACKLOG 10	 // how many pending connections queue will hold
 
-void sigchld_handler(int s) {
-	(void)s; // quiet unused variable warning
+// FUNCTIONS DECLARATIONS
+void *get_in_addr(struct sockaddr *sa);
+struct addrinfo* check_server(char* server, char* port);
+int bind_socket(struct addrinfo *servinfo);
+void sigchld_handler(int s);
+char* get_client_input(int new_fd);
+void request_handler(int sockfd, struct sockaddr_storage client_addr);
+void create_daemon();
+int start_server(char* address, char* port, int daemonize);
 
-	// waitpid() might overwrite errno, so we save and restore it:
-	int saved_errno = errno;
+// FUNCTION IMPLEMENTATIONS
 
-	while(waitpid(-1, NULL, WNOHANG) > 0);
+int start_server(char* address, char* port, int daemonize) {
+	int sockfd;  // listen on sock_fd, new connection on new_fd
+	struct addrinfo *servinfo;
+	struct sockaddr_storage client_addr; // connector's address information
+	struct sigaction sa;
 
-	errno = saved_errno;
-}
+	servinfo = check_server(address, port);
+	sockfd = bind_socket(servinfo);
 
-// get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa) {
-	switch (sa->sa_family) {
-		case AF_INET: return &(((struct sockaddr_in*)sa)->sin_addr);
-		case AF_INET6: return &(((struct sockaddr_in6*)sa)->sin6_addr);
+	// listen to incoming requests on the socket
+	if (listen(sockfd, BACKLOG) == -1) {
+		perror("listen");
+		exit(1);
 	}
+
+	sa.sa_handler = sigchld_handler; // reap all dead processes
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART;
+	if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+		perror("sigaction");
+		exit(1);
+	}
+
+	printf("Started Server\nWaiting for connections on %s:%s...\n", address, port);
+
+	if (daemonize == 1) {
+		printf("Daemonizing process...\n");
+		create_daemon();
+	}
+
+	while(1) {  // main accept() loop
+		request_handler(sockfd, client_addr);
+	}
+
+	return 0;
 }
 
 // verify endpoint connection and set address info
@@ -70,7 +98,10 @@ int bind_socket(struct addrinfo *servinfo) {
 			continue;
 		}
 
-		// verify if port is already in use
+		// set options for the socket
+		// this allows the socket to be reused immediately after the server exits
+		// SOL_SOCKET means the option is at the socket level
+		// SO_REUSEADDR is the option to set, the server will be able to bind to the same port
 		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
 			perror("setsockopt");
 			exit(1);
@@ -80,7 +111,7 @@ int bind_socket(struct addrinfo *servinfo) {
 		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
 			close(sockfd);
 			perror("server: bind");
-			continue;
+			exit(1);
 		}
 
 		break;
@@ -96,27 +127,32 @@ int bind_socket(struct addrinfo *servinfo) {
 	return sockfd;
 }
 
-char* get_client_input(int new_fd) {
-    int max_input_size = 30 * sizeof(char);
-    char buffer[max_input_size];
-    int data_size;
+void sigchld_handler(int s) {
+	(void)s; // quiet unused variable warning
 
-    send(new_fd, "Input your name: ", 17, 0);
-    data_size = recv(new_fd, buffer, max_input_size, 0);
+	// waitpid() might overwrite errno, so we save and restore it:
+	int saved_errno = errno;
 
-    // data_size will have a minimum of two bytes from recv()
-    if (data_size <= 2) {
-        return NULL;
-    }
+	while(waitpid(-1, NULL, WNOHANG) > 0);
 
-    printf("Received %d bytes of data\n", data_size);
-    printf("Message: %.*s\n", data_size, buffer);
+	errno = saved_errno;
+}
 
-    char *input = (char *)calloc(data_size + 1, sizeof(char));
-    strncpy(input, buffer, data_size - 2);
-    input[data_size - 2] = '\n'; 
 
-    return input;
+void create_daemon() {
+	// change to the "/" directory
+	int nochdir = 0;
+
+	// redirect standard input, output and error to /dev/null
+	// this is equivalent to "closing the file descriptors"
+	int noclose = 0;
+	
+	if (daemon(nochdir, noclose))
+		perror("daemon");
+
+
+	openlog("SERVER_DAEMON", LOG_PID, LOG_USER);
+	syslog(LOG_USER | LOG_INFO, "starting");
 }
 
 void request_handler(int sockfd, struct sockaddr_storage client_addr) {
@@ -161,55 +197,33 @@ void request_handler(int sockfd, struct sockaddr_storage client_addr) {
 	close(new_fd);  // parent doesn't need this
 }
 
-void create_daemon() {
-	// change to the "/" directory
-	int nochdir = 0;
-
-	// redirect standard input, output and error to /dev/null
-	// this is equivalent to "closing the file descriptors"
-	int noclose = 0;
-	
-	if (daemon(nochdir, noclose))
-		perror("daemon");
-
-
-	openlog("SERVER_DAEMON", LOG_PID, LOG_USER);
-	syslog(LOG_USER | LOG_INFO, "starting");
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa) {
+	switch (sa->sa_family) {
+		case AF_INET: return &(((struct sockaddr_in*)sa)->sin_addr);
+		case AF_INET6: return &(((struct sockaddr_in6*)sa)->sin6_addr);
+	}
 }
 
-int start_server(int daemonize) {
-	int sockfd;  // listen on sock_fd, new connection on new_fd
-	struct addrinfo *servinfo;
-	struct sockaddr_storage client_addr; // connector's address information
-	struct sigaction sa;
+char* get_client_input(int new_fd) {
+    int max_input_size = 30 * sizeof(char);
+    char buffer[max_input_size];
+    int data_size;
 
-	servinfo = check_server(LOCATION, PORT);
-	sockfd = bind_socket(servinfo);
+    send(new_fd, "Input your name: ", 17, 0);
+    data_size = recv(new_fd, buffer, max_input_size, 0);
 
-	// listen to incoming requests on the socket
-	if (listen(sockfd, BACKLOG) == -1) {
-		perror("listen");
-		exit(1);
-	}
+    // data_size will have a minimum of two bytes from recv()
+    if (data_size <= 2) {
+        return NULL;
+    }
 
-	sa.sa_handler = sigchld_handler; // reap all dead processes
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = SA_RESTART;
-	if (sigaction(SIGCHLD, &sa, NULL) == -1) {
-		perror("sigaction");
-		exit(1);
-	}
+    printf("Received %d bytes of data\n", data_size);
+    printf("Message: %.*s\n", data_size, buffer);
 
-	printf("Started Server\nWaiting for connections on %s:%s...\n", LOCATION, PORT);
+    char *input = (char *)calloc(data_size + 1, sizeof(char));
+    strncpy(input, buffer, data_size - 2);
+    input[data_size - 2] = '\n'; 
 
-	if (daemonize == 1) {
-		printf("Daemonizing process...\n");
-		create_daemon();
-	}
-
-	while(1) {  // main accept() loop
-		request_handler(sockfd, client_addr);
-	}
-
-	return 0;
+    return input;
 }

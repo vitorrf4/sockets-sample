@@ -1,8 +1,10 @@
 #include "start_server.h"
 
+#define LOCATION "localhost"
+#define PORT "3000"
+
 int main(void) {
-	int server_res;
-	server_res = start_server(0);
+	start_server(LOCATION, PORT, 0);
 
 	return 0;
 }
